@@ -64,6 +64,13 @@ class AgentConfig:
     epsilon_decay_episodes: int = 3000
     optimistic_init: float = 0.0
     planning_steps: int = 10
+    model_capacity: int = 20  # 1 reproduces the textbook deterministic model
+    dyna_kappa: float = 0.001
+    alpha_policy: float = 0.01
+    alpha_value: float = 0.05
+    hidden_units: int = 32  # 0 gives a purely linear actor and critic
+    entropy_beta: float = 0.01
+    reward_scale: float = 0.05
 
 
 def apply_overrides(cfg, overrides: dict):

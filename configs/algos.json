@@ -18,5 +18,28 @@
     "alpha": 0.1,
     "epsilon_end": 0.05,
     "epsilon_decay_episodes": 12000
+  },
+  "dyna_q": {
+    "alpha": 0.1,
+    "epsilon_end": 0.05,
+    "epsilon_decay_episodes": 12000,
+    "planning_steps": 5,
+    "model_capacity": 20
+  },
+  "dyna_q_plus": {
+    "alpha": 0.1,
+    "epsilon_end": 0.05,
+    "epsilon_decay_episodes": 12000,
+    "planning_steps": 5,
+    "model_capacity": 20,
+    "dyna_kappa": 0.001
+  },
+  "actor_critic": {
+    "gamma": 0.99,
+    "hidden_units": 32,
+    "alpha_policy": 0.05,
+    "alpha_value": 0.05,
+    "entropy_beta": 0.005,
+    "reward_scale": 0.05
   }
 }

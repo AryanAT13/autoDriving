@@ -6,7 +6,8 @@ from rl_drive.agents.base import EpsilonSchedule
 from rl_drive.agents.tabular import ExpectedSarsa, QLearning, Sarsa
 from rl_drive.config import AgentConfig
 from rl_drive.env import DrivingEnv
-from rl_drive.training import RunLogger, evaluate, load_checkpoint, run_episode, train
+from rl_drive.training import (RunLogger, evaluate, load_checkpoint, obs_mode_for,
+                               run_episode, train)
 
 GREEDY = AgentConfig(alpha=1.0, gamma=0.9, epsilon_start=0.0, epsilon_end=0.0)
 
@@ -87,16 +88,27 @@ def test_monte_carlo_first_visit_uses_first_occurrence(env):
     assert agent.counts[3, 1] == 1
 
 
+def _agent_env(name):
+    """Each agent must be given the encoder its obs_mode declares."""
+    env = DrivingEnv(obs_mode=obs_mode_for(name))
+    env.reset(seed=0)
+    return env
+
+
 @pytest.mark.parametrize("name", LEARNERS)
-def test_learner_runs_an_episode_and_updates(name, env):
+def test_learner_runs_an_episode_and_updates(name):
+    env = _agent_env(name)
     agent = make_agent(name, env, AgentConfig(), np.random.default_rng(0))
+    before = {key: value.copy() for key, value in agent.state_dict().items()}
     stats = run_episode(env, agent)
     assert stats.steps > 0
-    assert np.any(agent.q != 0.0)
+    assert any(not np.array_equal(before[key], value)
+               for key, value in agent.state_dict().items())
 
 
 @pytest.mark.parametrize("name", sorted(REGISTRY))
-def test_every_agent_exposes_the_interface(name, env):
+def test_every_agent_exposes_the_interface(name):
+    env = _agent_env(name)
     agent = make_agent(name, env, AgentConfig(), np.random.default_rng(0))
     assert agent.obs_mode in ("discrete", "continuous")
     for method in ("act", "observe", "end_episode", "state_dict", "load_state_dict"):
