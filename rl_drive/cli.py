@@ -12,7 +12,8 @@ from .agents import BASELINES, LEARNERS, REGISTRY, make_agent
 from .config import (AgentConfig, EnvConfig, RewardConfig, apply_overrides,
                      dump_configs, load_configs)
 from .env import ACTION_NAMES, DrivingEnv
-from .env.observations import CLOSING_NAMES, FREE, GAP_NAMES, LIGHT_NAMES
+from .env.observations import CLOSING_NAMES, LIGHT_NAMES
+from .policy_view import policy_table
 from .training import RunLogger, evaluate, load_checkpoint, train
 
 METRIC_ORDER = ("reward", "reward_std", "collision_rate", "goal_rate",
@@ -108,24 +109,16 @@ def cmd_policy(args) -> None:
     if not hasattr(agent, "q"):
         print(f"{meta['algo']} has no Q-table to tabulate (it uses function approximation)")
         return
-    light = LIGHT_NAMES.index(args.light)
-    closing = CLOSING_NAMES.index(args.closing)
-    if closing >= env.encoder.dims[3]:
-        closing = 0  # the relative-speed feature is ablated in this run
+    table = policy_table(env.encoder, agent.q, env.cfg.max_speed_level,
+                         light=args.light, closing=args.closing)
     print(f"\n{meta['algo']}: greedy policy | lane=middle, both sides free, "
-          f"lead={args.closing}, light={args.light}")
-    print("  speed |" + "".join(f"{name:>14}" for name in GAP_NAMES))
-    print("  " + "-" * (6 + 14 * len(GAP_NAMES)))
-    for speed in range(env.cfg.max_speed_level + 1):
-        actions = []
-        for gap in range(len(GAP_NAMES)):
-            state = int(np.ravel_multi_index(
-                (1, speed, gap, closing, FREE, FREE, light), env.encoder.dims))
-            actions.append(ACTION_NAMES[int(np.argmax(agent.q[state]))])
-        print(f"  {speed:5d} |" + "".join(f"{a:>14}" for a in actions))
-    visited = int((agent.q != 0).any(axis=1).sum())
-    print(f"\n  states with learned values: {visited} / {env.encoder.reachable} reachable "
-          f"({agent.q.shape[0]} in the table)")
+          f"lead={table['closing']}, light={table['light']}")
+    print("  speed |" + "".join(f"{name:>14}" for name in table["gaps"]))
+    print("  " + "-" * (6 + 14 * len(table["gaps"])))
+    for row in table["rows"]:
+        print(f"  {row['speed']:5d} |" + "".join(f"{a:>14}" for a in row["actions"]))
+    print(f"\n  states with learned values: {table['states_learned']} / "
+          f"{table['states_reachable']} reachable ({table['states_total']} in the table)")
 
 
 def cmd_serve(args) -> None:

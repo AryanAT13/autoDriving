@@ -3,6 +3,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
+from rl_drive.env import ACTION_NAMES
 from rl_drive.server import app
 from rl_drive.server.runs import BLOCK, TrainingRun
 
@@ -182,3 +183,61 @@ def test_impossible_setting_is_a_client_error_not_a_crash(client):
                                               "overrides": {"hidden_units": -5}})
     assert response.status_code == 400
     assert "invalid settings" in response.json()["detail"]
+
+
+def test_policy_table_is_readable(client):
+    run = client.post("/api/runs", json={"algo": "q_learning", "episodes": 300,
+                                         "eval_every": 0}).json()
+    from rl_drive.server.app import manager
+    wait_for_terminal(manager.get(run["id"]))
+
+    table = client.get(f"/api/runs/{run['id']}/policy").json()
+    assert table["gaps"] == ["near", "med", "far", "clear"]
+    assert len(table["rows"]) == 5
+    for row in table["rows"]:
+        assert len(row["actions"]) == 4
+        assert all(a in ACTION_NAMES for a in row["actions"])
+    assert 0 < table["states_learned"] <= table["states_reachable"] <= table["states_total"]
+
+
+def test_policy_rejects_function_approximation_and_bad_slices(client):
+    run = client.post("/api/runs", json={"algo": "actor_critic", "episodes": 20}).json()
+    assert client.get(f"/api/runs/{run['id']}/policy").status_code == 400
+
+    tabular = client.post("/api/runs", json={"algo": "q_learning", "episodes": 20}).json()
+    assert client.get(f"/api/runs/{tabular['id']}/policy",
+                      params={"light": "purple"}).status_code == 400
+
+
+def test_manual_drive_scores_like_an_agent_episode(client):
+    session = client.post("/api/drive", params={"seed": 7}).json()
+    assert session["done"] is False
+    assert session["stats"]["steps"] == 0
+
+    last = session
+    for _ in range(40):
+        last = client.post(f"/api/drive/{session['id']}", json={"action": 1}).json()
+        if last["done"]:
+            break
+    assert last["done"] is True
+    assert last["stats"]["steps"] > 0
+    assert last["stats"]["collision"] or last["stats"]["goal"] or last["stats"]["steps"] > 0
+    assert set(last["frame"]) >= {"ego", "traffic", "lights", "road_length"}
+
+
+def test_manual_drive_ignores_input_after_the_episode_ends(client):
+    session = client.post("/api/drive", params={"seed": 7}).json()
+    final = session
+    for _ in range(60):
+        final = client.post(f"/api/drive/{session['id']}", json={"action": 1}).json()
+        if final["done"]:
+            break
+    frozen = final["stats"]["steps"]
+    after = client.post(f"/api/drive/{session['id']}", json={"action": 1}).json()
+    assert after["stats"]["steps"] == frozen
+
+
+def test_manual_drive_validates_the_action(client):
+    session = client.post("/api/drive").json()
+    assert client.post(f"/api/drive/{session['id']}", json={"action": 9}).status_code == 422
+    assert client.post("/api/drive/nope", json={"action": 0}).status_code == 404

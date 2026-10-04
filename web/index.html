@@ -4,66 +4,109 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RL Driving Simulation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
 <script src="renderer.js" defer></script>
 <script src="app.js" defer></script>
 </head>
 <body>
-<header>
-  <h1>RL Driving Simulation</h1>
-  <span id="status" class="status">idle</span>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <div>
+      <h1>RL Driving Simulation</h1>
+      <p class="brand-sub">tabular &amp; policy-gradient agents on a three-lane road</p>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <span id="runLabel" class="run-label"></span>
+    <span id="status" class="status">idle</span>
+  </div>
 </header>
 
-<section class="controls" aria-label="Training controls">
-  <div class="field">
-    <label for="algo">Algorithm</label>
-    <select id="algo"></select>
-  </div>
-  <div class="field">
-    <label for="episodes">Episodes</label>
-    <input id="episodes" type="number" min="1" max="200000" step="500" value="5000">
-  </div>
-  <div class="field">
-    <label for="seed">Seed</label>
-    <input id="seed" type="number" min="0" max="9999" value="0">
-  </div>
-  <div class="field">
-    <label for="evalEvery">Evaluate every</label>
-    <input id="evalEvery" type="number" min="0" max="10000" step="50" value="250">
-  </div>
-  <div id="hyper" class="hyper"></div>
-  <div class="actions">
-    <button id="train" class="primary">Train</button>
-    <button id="stop" disabled>Stop</button>
-  </div>
-</section>
-
 <main>
-  <section class="panel viz">
-    <div class="panel-head">
-      <h2>Road</h2>
-      <div class="playback">
-        <button id="watchAgent" disabled>Watch agent</button>
-        <button id="watchScripted">Watch scripted</button>
-        <label for="speed">Speed</label>
-        <input id="speed" type="range" min="1" max="60" value="20">
+  <!-- the simulation is the point of the page, so it gets the room -->
+  <section class="stage">
+    <div class="stage-frame">
+      <canvas id="road"></canvas>
+      <div id="stageOverlay" class="stage-overlay">
+        <p class="overlay-title">Nothing on the road yet</p>
+        <p class="overlay-sub">Train an agent, watch the hand-written driver, or drive it yourself.</p>
+      </div>
+      <div id="driveHint" class="drive-hint" hidden>
+        <kbd>&uarr;</kbd> accelerate <kbd>&darr;</kbd> brake
+        <kbd>&larr;</kbd><kbd>&rarr;</kbd> change lane <kbd>Esc</kbd> exit
       </div>
     </div>
-    <canvas id="road" width="1000" height="260"></canvas>
-    <p id="episodeInfo" class="episode-info">No episode loaded. Train an agent, or watch the
-      hand-written driver for comparison.</p>
+
+    <div class="stage-bar">
+      <div class="stage-actions">
+        <button id="watchAgent" disabled>Watch agent</button>
+        <button id="watchScripted">Watch scripted</button>
+        <button id="drive" class="accent">Drive it yourself</button>
+      </div>
+      <div class="stage-speed">
+        <label for="speed">Playback</label>
+        <input id="speed" type="range" min="2" max="60" value="22">
+      </div>
+    </div>
+
+    <div class="readout">
+      <div class="readout-stats" id="episodeStats"></div>
+      <p id="episodeInfo" class="readout-note">No episode loaded.</p>
+    </div>
   </section>
 
-  <section class="panel charts">
-    <div class="panel-head"><h2>Learning</h2></div>
-    <div class="chart"><canvas id="returnChart"></canvas></div>
-    <div class="chart"><canvas id="collisionChart"></canvas></div>
-    <table id="summary" class="summary">
-      <caption>Latest greedy evaluation</caption>
-      <tbody></tbody>
-    </table>
-  </section>
+  <aside class="sidebar">
+    <section class="card">
+      <h2>Train</h2>
+      <div class="grid-2">
+        <div class="field">
+          <label for="algo">Algorithm</label>
+          <select id="algo"></select>
+        </div>
+        <div class="field">
+          <label for="episodes">Episodes</label>
+          <input id="episodes" type="number" min="1" max="200000" step="500" value="5000">
+        </div>
+        <div class="field">
+          <label for="seed">Seed</label>
+          <input id="seed" type="number" min="0" max="9999" value="0">
+        </div>
+        <div class="field">
+          <label for="evalEvery">Evaluate every</label>
+          <input id="evalEvery" type="number" min="0" max="10000" step="50" value="250">
+        </div>
+      </div>
+      <details id="advanced">
+        <summary>Hyperparameters</summary>
+        <div id="hyper" class="grid-2"></div>
+      </details>
+      <div class="row-actions">
+        <button id="train" class="primary">Train</button>
+        <button id="stop" disabled>Stop</button>
+        <button id="clear">Clear chart</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Learning</h2>
+      <div class="chart"><canvas id="returnChart"></canvas></div>
+      <div class="chart"><canvas id="collisionChart"></canvas></div>
+    </section>
+
+    <section class="card">
+      <h2>Latest greedy evaluation</h2>
+      <table id="summary" class="summary"><tbody></tbody></table>
+      <button id="showPolicy" disabled class="wide">Show learned policy</button>
+      <div id="policy" class="policy" hidden></div>
+    </section>
+  </aside>
 </main>
+
 </body>
 </html>

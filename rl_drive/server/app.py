@@ -15,14 +15,19 @@ from pydantic import BaseModel, Field
 from ..agents import BASELINES, LEARNERS, REGISTRY, make_agent
 from ..config import apply_overrides, load_configs
 from ..env import ACTION_NAMES, DrivingEnv
+from ..policy_view import policy_table
 from ..training import obs_mode_for, run_episode
-from .runs import RunManager
+from .runs import RunManager, SessionStore
 
 WEB_DIR = Path(__file__).resolve().parents[2] / "web"
 TUNABLE = ("alpha", "gamma", "epsilon_start", "epsilon_end", "epsilon_decay_episodes",
            "planning_steps", "model_capacity", "alpha_policy", "alpha_value",
            "entropy_beta", "hidden_units")
 POLL_SECONDS = 0.25
+
+
+class DriveRequest(BaseModel):
+    action: int = Field(..., ge=0, le=4)
 
 
 class TrainRequest(BaseModel):
@@ -35,6 +40,7 @@ class TrainRequest(BaseModel):
 
 
 manager = RunManager()
+sessions = SessionStore()
 
 
 @asynccontextmanager
@@ -118,6 +124,35 @@ def baseline_episode(algo: str = "scripted", seed: int | None = None) -> dict:
     frames: list[dict] = []
     stats = run_episode(env, agent, seed=seed, greedy=True, learn=False, frames=frames)
     return {"frames": frames, "stats": asdict(stats)}
+
+
+@app.get("/api/runs/{run_id}/policy")
+def run_policy(run_id: str, light: str = "none", closing: str = "steady") -> dict:
+    """The learned policy as a table a person can read and sanity-check."""
+    run = _require(run_id)
+    agent = run.agent_for_inspection()
+    if not hasattr(agent, "q"):
+        raise HTTPException(400, f"{run.algo} uses function approximation, not a Q-table")
+    try:
+        return policy_table(run.encoder, agent.q, run.env_cfg.max_speed_level,
+                            light=light, closing=closing)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.post("/api/drive")
+def start_drive(seed: int | None = None) -> dict:
+    """Begin a human-driven episode on the same road the agents train on."""
+    env_cfg, reward_cfg, _ = load_configs(None)
+    return sessions.start(env_cfg, reward_cfg, seed).view()
+
+
+@app.post("/api/drive/{session_id}")
+def drive_step(session_id: str, request: DriveRequest) -> dict:
+    session = sessions.get(session_id)
+    if session is None:
+        raise HTTPException(404, f"no drive session {session_id!r}")
+    return session.step(request.action)
 
 
 @app.websocket("/ws/runs/{run_id}")

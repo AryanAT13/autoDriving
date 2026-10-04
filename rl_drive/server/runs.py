@@ -11,7 +11,7 @@ import numpy as np
 from ..agents import make_agent
 from ..config import apply_overrides, load_configs
 from ..env import DrivingEnv
-from ..training import obs_mode_for, run_episode, train
+from ..training import EpisodeTally, obs_mode_for, run_episode, train
 
 MAX_RUNS = 20
 BLOCK = 25  # episodes aggregated into one streamed point
@@ -98,18 +98,28 @@ class TrainingRun:
                 "latest_eval": latest, "error": self.error,
                 "config": asdict(self.agent_cfg)}
 
-    def rollout(self, seed: int | None = None) -> dict:
-        """One greedy episode with the policy as it stands.
+    @property
+    def encoder(self):
+        return self._env.encoder
 
-        The weights are copied first; while training continues that copy is a live preview
-        and may straddle an update, which is fine for watching and never used for metrics.
-        """
+    def agent_for_inspection(self):
+        """A copy of the current policy, safe to read while training continues."""
         weights = {key: np.array(value, copy=True)
                    for key, value in self._agent.state_dict().items()}
         env = DrivingEnv(self.env_cfg, self.reward_cfg, obs_mode_for(self.algo))
         agent = make_agent(self.algo, env, self.agent_cfg, np.random.default_rng(0))
         if weights:
             agent.load_state_dict(weights)
+        return agent
+
+    def rollout(self, seed: int | None = None) -> dict:
+        """One greedy episode with the policy as it stands.
+
+        The weights are copied first; while training continues that copy is a live preview
+        and may straddle an update, which is fine for watching and never used for metrics.
+        """
+        agent = self.agent_for_inspection()
+        env = DrivingEnv(self.env_cfg, self.reward_cfg, obs_mode_for(self.algo))
         frames: list[dict] = []
         stats = run_episode(env, agent, seed=seed, greedy=True, learn=False, frames=frames)
         return {"frames": frames, "stats": asdict(stats)}
@@ -125,6 +135,33 @@ def _aggregate(window: list) -> dict:
         "mean_speed": sum(s.mean_speed for s in window) / size,
         "epsilon": window[-1].epsilon,
     }
+
+
+class ManualSession:
+    """A human-driven episode, stepped one action at a time from the browser.
+
+    It is the same environment the agents face, scored the same way, so a person's run is
+    directly comparable to a trained policy's.
+    """
+
+    def __init__(self, env_cfg, reward_cfg, seed: int | None = None):
+        self.id = uuid.uuid4().hex[:8]
+        self.env = DrivingEnv(env_cfg, reward_cfg)
+        self.env.reset(seed=seed)
+        self.tally = EpisodeTally()
+        self.done = False
+
+    def view(self, reward: float = 0.0) -> dict:
+        return {"id": self.id, "frame": self.env.frame(), "stats": asdict(self.tally.stats),
+                "done": self.done, "reward": reward}
+
+    def step(self, action: int) -> dict:
+        if self.done:
+            return self.view()
+        _, reward, terminated, truncated, info = self.env.step(action)
+        self.tally.add(reward, info)
+        self.done = bool(terminated or truncated)
+        return self.view(reward)
 
 
 class RunManager:
@@ -156,3 +193,21 @@ class RunManager:
     def stop_all(self) -> None:
         for run in self._runs.values():
             run.stop()
+
+
+class SessionStore:
+    """The handful of manual-drive episodes currently in play."""
+
+    def __init__(self, limit: int = 8):
+        self.limit = limit
+        self._sessions: dict[str, ManualSession] = {}
+
+    def start(self, env_cfg, reward_cfg, seed=None) -> ManualSession:
+        session = ManualSession(env_cfg, reward_cfg, seed)
+        self._sessions[session.id] = session
+        while len(self._sessions) > self.limit:
+            self._sessions.pop(next(iter(self._sessions)))
+        return session
+
+    def get(self, session_id: str) -> ManualSession | None:
+        return self._sessions.get(session_id)

@@ -4,16 +4,16 @@ from __future__ import annotations
 
 import numpy as np
 
-from .metrics import EpisodeStats
+from .metrics import EpisodeTally
 
 
 def run_episode(env, agent, seed=None, greedy: bool = False, learn: bool = True,
-                frames: list | None = None) -> EpisodeStats:
+                frames: list | None = None):
     obs, _ = env.reset(seed=seed)
     # Choosing the next action before updating is what lets SARSA share this loop.
     action = agent.act(obs, greedy=greedy)
-    stats = EpisodeStats()
-    speeds, errors = [], []
+    tally = EpisodeTally()
+    errors = []
     if frames is not None:
         frames.append(env.frame())
 
@@ -26,21 +26,13 @@ def run_episode(env, agent, seed=None, greedy: bool = False, learn: bool = True,
         if frames is not None:
             frames.append(env.frame())
 
-        stats.steps += 1
-        stats.reward += reward
-        stats.red_lights += int(info["ran_red"])
-        stats.off_road += int(info["off_road"])
-        stats.lane_changes += int(info["lane_changed"])
-        speeds.append(info["speed_level"])
+        stats = tally.add(reward, info)
 
         obs, action = next_obs, next_action
         if terminated or truncated:
-            stats.collision = bool(info["collision"])
-            stats.goal = bool(info["goal"])
             break
 
     if learn:
         agent.end_episode()
-    stats.mean_speed = float(np.mean(speeds))
     stats.mean_td = float(np.mean(errors)) if errors else 0.0
     return stats

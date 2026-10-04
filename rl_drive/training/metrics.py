@@ -26,6 +26,31 @@ class EpisodeStats:
     mean_td: float = 0.0
 
 
+class EpisodeTally:
+    """Accumulates one episode's statistics step by step.
+
+    Kept separate from the rollout loop so a human-driven episode, which is stepped one
+    action at a time from the browser, reports exactly what an agent's episode reports.
+    """
+
+    def __init__(self):
+        self.stats = EpisodeStats()
+        self._speeds: list[float] = []
+
+    def add(self, reward: float, info: dict) -> EpisodeStats:
+        stats = self.stats
+        stats.steps += 1
+        stats.reward += reward
+        stats.red_lights += int(info["ran_red"])
+        stats.off_road += int(info["off_road"])
+        stats.lane_changes += int(info["lane_changed"])
+        stats.collision = bool(info["collision"])
+        stats.goal = bool(info["goal"])
+        self._speeds.append(info["speed_level"])
+        stats.mean_speed = float(np.mean(self._speeds))
+        return stats
+
+
 def summarise(stats: list[EpisodeStats]) -> dict:
     """Collapse a batch of episodes into the scalar metrics we report."""
     if not stats:

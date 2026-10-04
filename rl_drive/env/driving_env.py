@@ -114,8 +114,9 @@ class DrivingEnv(gym.Env):
             "step": world.steps,
             "lanes": self.cfg.lanes,
             "road_length": self.cfg.road_length,
-            "ego": {"x": world.ego.x, "lane": world.ego.lane, "speed": world.ego_speed_level},
-            "traffic": [{"x": v.x, "lane": v.lane} for v in world.traffic],
+            "ego": {"x": world.ego.x, "lane": world.ego.lane,
+                    "speed": world.ego_speed_level, "max_speed": self.cfg.max_speed_level},
+            "traffic": [{"x": v.x, "lane": v.lane, "speed": v.speed} for v in world.traffic],
             "lights": [{"x": p, "phase": PHASE_NAMES[world.light_phase(i)]}
                        for i, p in enumerate(self.cfg.light_positions)],
         }

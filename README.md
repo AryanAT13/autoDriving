@@ -5,28 +5,100 @@ signals. The simulation exists to serve the RL, not the other way round: it is f
 fully reproducible, and exposes the same world through two observation encodings so
 tabular and function-approximation agents stay directly comparable.
 
-**Status: Phases 1-4 complete** — environment, baselines, seven learning algorithms
-spanning TD control, Monte Carlo, model-based planning and policy gradient, plus the
-training harness, CLI, multi-seed experiment suite, test suite, and a browser dashboard
-that trains an agent live and animates it driving.
+**All five phases complete** — environment, baselines, seven learning algorithms spanning
+TD control, Monte Carlo, model-based planning and policy gradient, plus the training
+harness, CLI, multi-seed experiment suite, 123 tests, and a browser dashboard that trains
+an agent live, animates it driving, tabulates what it learned, and lets you take the wheel
+yourself for comparison.
 
 ## Setup
 
+Needs Python 3.11 or newer. From the project folder, once:
+
 ```bash
-python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
+python3 -m venv .venv
 ```
 
-All commands below assume `./.venv/bin/python`.
+```bash
+./.venv/bin/pip install -r requirements.txt
+```
 
-## Quickstart
+That installs numpy, gymnasium, fastapi, uvicorn, matplotlib and pytest. Nothing else is
+needed: no API keys, no accounts, no npm, and the dashboard's one external library
+(Chart.js) loads from a CDN at page load.
 
-Run the dashboard and open http://127.0.0.1:8000:
+## Running it
+
+Start the dashboard:
 
 ```bash
 ./.venv/bin/python -m rl_drive.cli serve
 ```
 
-Everything below also works headless from the command line:
+Then open **http://127.0.0.1:8000** in a browser. `Ctrl+C` in the terminal stops it.
+
+`--port 8080` moves it if 8000 is taken, and `--reload` restarts on code changes. If you
+would rather activate the environment first, `source .venv/bin/activate` lets you drop the
+`./.venv/bin/` prefix from every command below.
+
+Check everything works:
+
+```bash
+./.venv/bin/python -m pytest -q
+```
+
+## Demo guide
+
+A six-step run-through, about five minutes. Every number below was measured on this
+machine, so they are what you should actually see.
+
+**1 — Show the road.** Press **Watch scripted**. A hand-written rule-based driver runs the
+course: three lanes, traffic that brakes for the car in front, and signals it stops for.
+Expect it to reach the goal with a return around **43-53** and no collisions.
+
+**2 — Let them try it.** Press **Drive it yourself** and hand over the keyboard. Arrow keys
+or WASD; `Esc` quits. Most people crash inside ten steps, and the readout says so against
+the agent's score. This is the hook: the task looks easy and is not.
+
+**3 — Train an agent in front of them.** Algorithm `q_learning`, Episodes `5000`, press
+**Train**. It finishes in about 15 seconds. Watch the greedy-return line climb from roughly
+**-80 to +40** and the collision rate fall from **~1.0 to ~0.3**. Final evaluation lands
+near **return 42, 0% collisions, 100% goal**.
+
+**4 — Show what it learned.** Press **Watch agent**. It holds a gap, overtakes through the
+side lanes, and stops at red lights. Nothing in the code tells it to do any of that; the
+only inputs are the rewards in the table further down this file.
+
+**5 — Show the policy is readable.** Press **Show learned policy**. The table is the greedy
+action for each speed and gap in the middle lane. Look for `clear` -> ACCELERATE and
+`near` at high speed -> BRAKE or a lane change. A learned policy a person can read and
+agree with is more convincing than any curve.
+
+**6 — The actual result.** Switch Algorithm to `sarsa` and press **Train** again. Both runs
+stay on the chart. SARSA finishes lower (**~33** against Q-Learning's **~41**) but its
+collision line sits visibly *below* Q-Learning's for the whole run. That is the on-policy
+versus off-policy safety trade-off, live, in one picture.
+
+### Knobs worth turning on stage
+
+Open **Hyperparameters**. All measured with `q_learning` over 5000 episodes, against a
+baseline of **return 40.7, 1% collisions**:
+
+| Change | Result | Why |
+| --- | --- | --- |
+| Episodes `1000` | **2.6**, 29% collisions | exploration has barely decayed; it is still mostly guessing |
+| `alpha` `0.9` | **-2.0**, 13% collisions | steps too large to converge; the curve visibly thrashes |
+| `epsilon_end` `0.3` | **30.8**, 8% collisions | it never stops taking random actions |
+| `gamma` `0.5` | **33.3**, 6% collisions | too myopic to value the goal far ahead |
+| Algorithm `monte_carlo` | **~-2**, 19% collisions | no bootstrapping, so it needs whole episodes and inherits their variance |
+| Algorithm `actor_critic` | **~19** on average, very seed-dependent | policy gradient on the continuous features; brilliant or stuck, run to run |
+| Algorithm `dyna_q`, `planning_steps` `0` vs `20` | barely differs here | planning only pays when samples are scarce; see Findings |
+
+Up to three runs stay on the chart at once, each keeping its colour; **Clear chart** resets.
+
+## Command line
+
+Everything the dashboard does is also available headless.
 
 ```bash
 ./.venv/bin/python -m rl_drive.cli baseline
@@ -43,18 +115,14 @@ Inspect what a finished run learned:
 ./.venv/bin/python -m rl_drive.cli policy --run runs/q_learning_s0_<timestamp>
 ```
 
-```bash
-./.venv/bin/python -m pytest -q
-```
-
 Compare every algorithm across seeds and write the table and figures:
 
 ```bash
 ./.venv/bin/python experiments/compare_algorithms.py --episodes 20000 --seeds 5
 ```
 
-That writes `comparison.csv`, `curves.csv` and three figures. Redraw the figures from the
-saved curves without retraining:
+That writes `comparison.csv`, `curves.csv` and three figures to `figures/`. Redraw the
+figures from the saved curves without retraining:
 
 ```bash
 ./.venv/bin/python experiments/compare_algorithms.py --replot figures
@@ -66,17 +134,13 @@ Sweep a single hyperparameter:
 ./.venv/bin/python experiments/sweep.py --algo dyna_q --param planning_steps --values 0 5 20 50
 ```
 
-## Dashboard
+## Dashboard internals
 
-Pick an algorithm, adjust the settings that matter for it, press Train, and watch the
-greedy-evaluation return climb and the collision rate fall while it learns. Press Watch
-agent at any point to replay a greedy episode with the policy as it currently stands, or
-Watch scripted to see the hand-written driver on the same road for comparison. Stop ends a
-run early and keeps what it learned.
-
-Training is CPU-bound, so each run owns a thread; the API only ever reads from it.
+Training is CPU-bound, so each run owns a thread and the API only ever reads from it.
 Episodes are aggregated server-side into blocks of 25 before being streamed, because a
-long run produces episodes far faster than a browser can plot them.
+long run produces episodes far faster than a browser can plot them. A human-driven episode
+is a server-side session stepped one action at a time, scored by the same code that scores
+an agent's episode, so the two numbers are directly comparable.
 
 | Endpoint | Purpose |
 | --- | --- |
@@ -87,6 +151,8 @@ long run produces episodes far faster than a browser can plot them.
 | `POST /api/runs/{id}/stop` | end a run early |
 | `GET /api/runs/{id}/episode` | one greedy episode with the current policy, as frames |
 | `GET /api/episode?algo=scripted` | the same for a non-learning baseline |
+| `GET /api/runs/{id}/policy` | the learned policy as a readable action table |
+| `POST /api/drive`, `POST /api/drive/{id}` | start and step a human-driven episode |
 | `WS /ws/runs/{id}` | live stream of aggregated blocks, evaluations and status |
 
 Interactive API docs are at `/docs`. The frontend is plain HTML, CSS and JavaScript with
@@ -318,9 +384,14 @@ rl_drive/
     metrics.py        stats, CSV logging, checkpoints
   server/
     app.py            FastAPI routes, websocket stream, static mount
-    runs.py           background training runs and their aggregation
+    runs.py           background training runs, aggregation, manual-drive sessions
+  policy_view.py      the readable policy slice, shared by the CLI and the dashboard
   cli.py
-web/                  dashboard: index.html, app.js, renderer.js, styles.css
+web/
+  index.html          layout
+  styles.css          dark theme
+  renderer.js         canvas: road, vehicles, signals, HUD
+  app.js              controls, websocket, charts, playback, manual driving
 configs/              JSON presets, including per-algorithm hyperparameters
 experiments/          comparison and sweep scripts, figure styling
 tests/
@@ -333,7 +404,3 @@ runs/, figures/       outputs (gitignored)
 held-out seed set starting at 10000, with deterministic tie-breaking, so repeated
 evaluations of the same policy return identical numbers. Each run writes `config.json`,
 `train.csv`, `eval.csv`, `meta.json` and `policy.npz` to its own directory under `runs/`.
-
-## Roadmap
-
-- **Phase 5** — manual-drive human baseline, hyperparameter sweeps, learning-proof artifacts.
