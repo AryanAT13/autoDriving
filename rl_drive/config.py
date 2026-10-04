@@ -74,11 +74,22 @@ class AgentConfig:
 
 
 def apply_overrides(cfg, overrides: dict):
-    """Set dataclass fields from a dict, rejecting unknown keys."""
+    """Set dataclass fields from a dict, rejecting unknown keys and preserving field types.
+
+    JSON has a single number type, so an int-valued setting arrives as a float and would
+    otherwise reach numpy as 32.0 where an array shape needs 32.
+    """
     known = {f.name for f in fields(cfg)}
     for key, value in overrides.items():
         if key not in known:
             raise KeyError(f"unknown config field {key!r} for {type(cfg).__name__}")
+        default = getattr(cfg, key)
+        if isinstance(default, bool):
+            value = bool(value)
+        elif isinstance(default, int):
+            value = int(value)
+        elif isinstance(default, float):
+            value = float(value)
         setattr(cfg, key, value)
     return cfg
 

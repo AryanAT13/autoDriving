@@ -4,3 +4,4 @@ fastapi>=0.115
 uvicorn[standard]>=0.30
 matplotlib>=3.8
 pytest>=8.0
+httpx2>=0.1

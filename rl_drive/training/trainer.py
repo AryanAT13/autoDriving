@@ -7,15 +7,18 @@ from .rollout import run_episode
 
 
 def train(env, agent, episodes: int, eval_env=None, eval_every: int = 0,
-          eval_episodes: int = 20, logger=None, on_episode=None):
+          eval_episodes: int = 20, logger=None, on_episode=None, should_stop=None):
     """Run `episodes` of training, periodically scoring the greedy policy.
 
-    `on_episode(stats, evaluation)` is the hook the web server streams from.
+    `on_episode(stats, evaluation)` is the hook the web server streams from, and
+    `should_stop()` lets it cancel a run between episodes.
     """
     history, evaluations = [], []
     schedule = getattr(agent, "epsilon", None)
 
     for episode in range(episodes):
+        if should_stop is not None and should_stop():
+            break
         if schedule is not None:
             schedule.update(episode)
         stats = run_episode(env, agent)

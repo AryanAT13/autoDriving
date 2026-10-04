@@ -128,6 +128,13 @@ def cmd_policy(args) -> None:
           f"({agent.q.shape[0]} in the table)")
 
 
+def cmd_serve(args) -> None:
+    import uvicorn
+
+    print(f"dashboard on http://{args.host}:{args.port}")
+    uvicorn.run("rl_drive.server.app:app", host=args.host, port=args.port, reload=args.reload)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="rl_drive", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -166,6 +173,12 @@ def build_parser() -> argparse.ArgumentParser:
     pol_p.add_argument("--light", choices=LIGHT_NAMES, default="none")
     pol_p.add_argument("--closing", choices=CLOSING_NAMES, default="steady")
     pol_p.set_defaults(func=cmd_policy)
+
+    serve_p = sub.add_parser("serve", help="run the browser dashboard on localhost")
+    serve_p.add_argument("--host", default="127.0.0.1")
+    serve_p.add_argument("--port", type=int, default=8000)
+    serve_p.add_argument("--reload", action="store_true")
+    serve_p.set_defaults(func=cmd_serve)
     return parser
 
 

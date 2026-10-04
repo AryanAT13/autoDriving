@@ -98,3 +98,16 @@ def test_save_curves_skips_agents_without_curves(tmp_path):
     path = tmp_path / "curves.csv"
     save_curves({"random": evaluate_seeds("random", seeds=(0,), episodes=2)}, path)
     assert not path.exists()
+
+
+def test_overrides_keep_integer_settings_integral():
+    """JSON numbers are all floats; numpy needs ints for shapes and counts."""
+    from rl_drive.config import apply_overrides
+
+    cfg = AgentConfig()
+    apply_overrides(cfg, {"hidden_units": 32.0, "planning_steps": 5.0,
+                          "epsilon_decay_episodes": 1200.0, "alpha": 1})
+    assert isinstance(cfg.hidden_units, int) and cfg.hidden_units == 32
+    assert isinstance(cfg.planning_steps, int)
+    assert isinstance(cfg.epsilon_decay_episodes, int)
+    assert isinstance(cfg.alpha, float) and cfg.alpha == 1.0
