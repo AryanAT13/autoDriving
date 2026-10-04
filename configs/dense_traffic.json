@@ -1,0 +1,10 @@
+{
+  "env": {
+    "n_traffic": 18,
+    "traffic_speed_max": 2
+  },
+  "reward": {},
+  "agent": {
+    "epsilon_decay_episodes": 15000
+  }
+}

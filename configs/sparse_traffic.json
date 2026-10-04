@@ -1,0 +1,9 @@
+{
+  "env": {
+    "n_traffic": 6
+  },
+  "reward": {},
+  "agent": {
+    "epsilon_decay_episodes": 8000
+  }
+}

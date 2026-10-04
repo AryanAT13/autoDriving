@@ -1,0 +1,25 @@
+[project]
+name = "rl-drive"
+version = "0.1.0"
+description = "Reinforcement learning agents for a multi-lane driving simulation"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2.0",
+    "gymnasium>=1.0",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "matplotlib>=3.8",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["rl_drive*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

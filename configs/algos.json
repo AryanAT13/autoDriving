@@ -1,0 +1,22 @@
+{
+  "q_learning": {
+    "alpha": 0.1,
+    "epsilon_end": 0.05,
+    "epsilon_decay_episodes": 12000
+  },
+  "sarsa": {
+    "alpha": 0.1,
+    "epsilon_end": 0.01,
+    "epsilon_decay_episodes": 12000
+  },
+  "expected_sarsa": {
+    "alpha": 0.1,
+    "epsilon_end": 0.02,
+    "epsilon_decay_episodes": 12000
+  },
+  "monte_carlo": {
+    "alpha": 0.1,
+    "epsilon_end": 0.05,
+    "epsilon_decay_episodes": 12000
+  }
+}
