@@ -5,9 +5,10 @@ signals. The simulation exists to serve the RL, not the other way round: it is f
 fully reproducible, and exposes the same world through two observation encodings so
 tabular and function-approximation agents stay directly comparable.
 
-**Status: Phases 1-3 complete** — environment, baselines, seven learning algorithms
+**Status: Phases 1-4 complete** — environment, baselines, seven learning algorithms
 spanning TD control, Monte Carlo, model-based planning and policy gradient, plus the
-training harness, CLI, multi-seed experiment suite and test suite.
+training harness, CLI, multi-seed experiment suite, test suite, and a browser dashboard
+that trains an agent live and animates it driving.
 
 ## Setup
 
@@ -18,6 +19,14 @@ python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
 All commands below assume `./.venv/bin/python`.
 
 ## Quickstart
+
+Run the dashboard and open http://127.0.0.1:8000:
+
+```bash
+./.venv/bin/python -m rl_drive.cli serve
+```
+
+Everything below also works headless from the command line:
 
 ```bash
 ./.venv/bin/python -m rl_drive.cli baseline
@@ -56,6 +65,32 @@ Sweep a single hyperparameter:
 ```bash
 ./.venv/bin/python experiments/sweep.py --algo dyna_q --param planning_steps --values 0 5 20 50
 ```
+
+## Dashboard
+
+Pick an algorithm, adjust the settings that matter for it, press Train, and watch the
+greedy-evaluation return climb and the collision rate fall while it learns. Press Watch
+agent at any point to replay a greedy episode with the policy as it currently stands, or
+Watch scripted to see the hand-written driver on the same road for comparison. Stop ends a
+run early and keeps what it learned.
+
+Training is CPU-bound, so each run owns a thread; the API only ever reads from it.
+Episodes are aggregated server-side into blocks of 25 before being streamed, because a
+long run produces episodes far faster than a browser can plot them.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/algorithms` | learners, their obs mode, and per-algorithm defaults |
+| `GET /api/environment` | road and reward settings, for the renderer |
+| `POST /api/runs` | start a run; body sets algorithm, episodes, seed and overrides |
+| `GET /api/runs`, `GET /api/runs/{id}` | run list and status |
+| `POST /api/runs/{id}/stop` | end a run early |
+| `GET /api/runs/{id}/episode` | one greedy episode with the current policy, as frames |
+| `GET /api/episode?algo=scripted` | the same for a non-learning baseline |
+| `WS /ws/runs/{id}` | live stream of aggregated blocks, evaluations and status |
+
+Interactive API docs are at `/docs`. The frontend is plain HTML, CSS and JavaScript with
+Chart.js from a CDN, so there is no build step and nothing to install for it.
 
 ## The decision problem
 
@@ -220,6 +255,20 @@ policy gradient and tabular TD. Note also that it has the *lowest* training coll
 of any learner at 10.8%: a stochastic entropy-regularised policy never commits hard enough
 to crash often, and its two bad seeds fail by crawling rather than by crashing.
 
+**Streaming every episode to the browser does not work, and the fix is server-side.**
+Q-Learning produces well over a thousand episodes a second. Pushing each one over the
+websocket meant roughly 300 KB of JSON four times a second, which the browser's main
+thread could not parse and plot fast enough to keep up. Aggregating into blocks of 25
+before sending cuts the traffic and the memory about twenty-five fold and loses nothing:
+the chart was only plotting a running mean anyway.
+
+**One websocket bug was a read-twice race.** The stream handler sent `run.summary()` and
+then separately re-read `run.status` to decide whether to stop looping. A run that
+finished between those two reads produced a payload saying "running" followed by the
+server closing the loop, so the browser sat on a status that would never arrive. Reading
+the summary once and deciding from that value fixes it; `test_last_websocket_message_is_always_terminal`
+guards it.
+
 ## Algorithms
 
 | Agent | Family |
@@ -267,7 +316,11 @@ rl_drive/
     trainer.py        the training loop
     experiment.py     multi-seed runs and aggregation
     metrics.py        stats, CSV logging, checkpoints
+  server/
+    app.py            FastAPI routes, websocket stream, static mount
+    runs.py           background training runs and their aggregation
   cli.py
+web/                  dashboard: index.html, app.js, renderer.js, styles.css
 configs/              JSON presets, including per-algorithm hyperparameters
 experiments/          comparison and sweep scripts, figure styling
 tests/
@@ -283,5 +336,4 @@ evaluations of the same policy return identical numbers. Each run writes `config
 
 ## Roadmap
 
-- **Phase 4** — FastAPI backend and browser dashboard: live canvas, live charts, controls.
 - **Phase 5** — manual-drive human baseline, hyperparameter sweeps, learning-proof artifacts.

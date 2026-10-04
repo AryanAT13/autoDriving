@@ -6,3 +6,6 @@ venv/
 .pytest_cache/
 runs/
 .DS_Store
+
+# local dev-server config (contains a machine-specific interpreter path)
+.claude/launch.json
