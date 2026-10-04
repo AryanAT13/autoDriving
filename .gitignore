@@ -5,5 +5,4 @@ venv/
 *.egg-info/
 .pytest_cache/
 runs/
-figures/
 .DS_Store
