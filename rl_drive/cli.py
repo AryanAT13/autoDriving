@@ -105,6 +105,9 @@ def cmd_eval(args) -> None:
 def cmd_policy(args) -> None:
     """Print the greedy action for an interpretable slice of the state space."""
     env, agent, meta = load_run(args.run)
+    if not hasattr(agent, "q"):
+        print(f"{meta['algo']} has no Q-table to tabulate (it uses function approximation)")
+        return
     light = LIGHT_NAMES.index(args.light)
     closing = CLOSING_NAMES.index(args.closing)
     if closing >= env.encoder.dims[3]:

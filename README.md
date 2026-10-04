@@ -5,8 +5,9 @@ signals. The simulation exists to serve the RL, not the other way round: it is f
 fully reproducible, and exposes the same world through two observation encodings so
 tabular and function-approximation agents stay directly comparable.
 
-**Status: Phases 1 and 2 complete** — environment, baselines, four learning algorithms,
-training harness, CLI and test suite.
+**Status: Phases 1-3 complete** — environment, baselines, seven learning algorithms
+spanning TD control, Monte Carlo, model-based planning and policy gradient, plus the
+training harness, CLI, multi-seed experiment suite and test suite.
 
 ## Setup
 
@@ -23,8 +24,11 @@ All commands below assume `./.venv/bin/python`.
 ```
 
 ```bash
-./.venv/bin/python -m rl_drive.cli train --algo q_learning --episodes 40000 --alpha 0.2 --eps-decay 25000
+./.venv/bin/python -m rl_drive.cli train --algo q_learning --episodes 20000
 ```
+
+Hyperparameters come from `configs/algos.json` per algorithm; CLI flags override them.
+Inspect what a finished run learned:
 
 ```bash
 ./.venv/bin/python -m rl_drive.cli policy --run runs/q_learning_s0_<timestamp>
@@ -32,6 +36,25 @@ All commands below assume `./.venv/bin/python`.
 
 ```bash
 ./.venv/bin/python -m pytest -q
+```
+
+Compare every algorithm across seeds and write the table and figures:
+
+```bash
+./.venv/bin/python experiments/compare_algorithms.py --episodes 20000 --seeds 5
+```
+
+That writes `comparison.csv`, `curves.csv` and three figures. Redraw the figures from the
+saved curves without retraining:
+
+```bash
+./.venv/bin/python experiments/compare_algorithms.py --replot figures
+```
+
+Sweep a single hyperparameter:
+
+```bash
+./.venv/bin/python experiments/sweep.py --algo dyna_q --param planning_steps --values 0 5 20 50
 ```
 
 ## The decision problem
@@ -85,48 +108,56 @@ termination.
 
 ## Results
 
-Three seeds, 20000 training episodes, scored greedily on 200 held-out episodes.
-Return is mean +/- standard deviation across seeds.
+Five seeds, 20000 training episodes, scored greedily on 200 held-out episodes.
+Return is mean +/- 95% confidence interval across seeds. Reproduce with
+`experiments/compare_algorithms.py`; figures land in `figures/`.
 
-| Agent | Return | Collisions | Goal | Speed | Training collisions |
+| Agent | Return | Collisions | Goal | Speed | Collisions while training |
 | --- | --- | --- | --- | --- | --- |
-| random | -95.6 +/- 2.2 | 98.2% | 1.7% | 2.07 | - |
+| random | -95.6 +/- 1.8 | 98.4% | 1.4% | 2.09 | - |
 | always_accelerate | -75.2 +/- 0.0 | 100.0% | 0.0% | 3.91 | - |
 | crawler (never moves) | -74.9 | 0.0% | 0.0% | 0.00 | - |
-| `monte_carlo` | -6.8 +/- 6.5 | 16.5% | 81.8% | 1.83 | 62.0% |
-| `sarsa` | 34.0 +/- 3.5 | 0.2% | 99.2% | 2.06 | **32.0%** |
-| `expected_sarsa` | 38.6 +/- 0.8 | 0.0% | 99.8% | 2.26 | 39.1% |
-| `q_learning` | **42.2 +/- 0.8** | 0.0% | 100.0% | 2.59 | 58.2% |
+| `monte_carlo` | -2.3 +/- 8.1 | 19.4% | 79.3% | 1.95 | 59.1% |
+| `actor_critic` | 18.5 +/- 25.8 | 0.0% | 86.5% | 2.06 | **10.8%** |
+| `sarsa` | 33.0 +/- 3.1 | 0.6% | 99.1% | 1.95 | **32.0%** |
+| `dyna_q` | 34.5 +/- 7.0 | 1.6% | 98.4% | 2.51 | 61.7% |
+| `dyna_q_plus` | 37.6 +/- 2.1 | 0.9% | 98.4% | 2.58 | 61.6% |
+| `expected_sarsa` | 40.5 +/- 0.9 | 0.0% | 100.0% | 2.45 | 39.9% |
+| `q_learning` | **40.5 +/- 1.5** | 0.1% | 99.9% | 2.49 | 57.0% |
 | scripted (hand-written) | 43.5 +/- 0.0 | 0.0% | 100.0% | 2.24 | - |
 
 Calibration: on an empty road with no signals the scripted driver scores 61.3, matching
 the hand-computed ceiling of 61.2. Traffic costs roughly 14 points and the signals 4, so
 43.5 is close to what this traffic density allows.
 
-Q-Learning reaches parity with a hand-tuned rule-based controller from zero prior
-knowledge, having started 138 points below it.
+Q-Learning comes within 3 points of a hand-tuned rule-based controller from zero prior
+knowledge, having started 136 points below it. Every learner except Monte Carlo ends with
+a collision rate under 2%.
 
 ## Findings
 
 **On-policy methods trade return for safety during training.** Q-Learning ends higher
-(42.2 vs 34.0) but collides in 58.2% of training episodes against SARSA's 32.0%. Because
+(40.5 vs 33.0) but collides in 57.0% of training episodes against SARSA's 32.0%. Because
 SARSA bootstraps from the action it will actually take, it prices in its own exploration
-and learns a slower, more cautious policy (speed 2.06 vs 2.59). Expected SARSA lands
-between the two on both axes, as theory predicts. This is the cliff-walking result in a
-driving setting.
+and learns a slower, more cautious policy (speed 1.95 vs 2.49). Expected SARSA sits between
+the two on training collisions at 39.9% while matching Q-Learning's final return, which is
+the variance reduction it is meant to buy. This is the cliff-walking result in a driving
+setting.
 
 **SARSA's caution scales with the exploration rate.** At `epsilon_end = 0.05` it degrades
 into a crawling policy that never arrives (return -44, speed 0.69): assuming it will keep
 taking random actions forever, crawling really is its best option. At 0.01 it recovers to
-34.0. Per-algorithm exploration rates live in `configs/algos.json`.
+33.0. Per-algorithm exploration rates live in `configs/algos.json`.
 
 **Monte Carlo is far weaker than TD here.** Without bootstrapping it needs complete
-episodes and inherits their full variance, finishing at -6.8 with a 16.5% collision rate.
+episodes and inherits their full variance, finishing at -2.3 with a 19.4% collision rate,
+the only learner that still crashes often.
 
 **Adding relative speed to the tabular state did not pay for itself.** It tripled the
 state space and never won on matched runs (35.1 vs 40.1 at 20k episodes; 35.1 vs 35.9 at
 50k). It is retained behind `closing_buckets` as an ablation knob, and the continuous
-encoder keeps the feature for function approximation in Phase 3.
+encoder keeps the feature, where the actor-critic generalises across states instead of
+visiting each one.
 
 **Reward shaping needed rebalancing.** Because total distance is fixed, the
 speed-proportional progress term is near-constant across policies; the step penalty is
@@ -134,6 +165,60 @@ what actually makes speed pay. At the original `-0.05` the agent had almost no r
 hurry. Raising it to `-0.25` and the collision cost to `-75` puts the degenerate
 "never move" policy (-74.9) level with crashing, while discounting keeps crashing
 strictly worse than crawling, so there is no incentive to end an episode early.
+
+**Dyna-Q's textbook model is destructive here, and a sampled model fixes it.** Sutton and
+Barto's model is deterministic: one stored transition per state-action pair. The discrete
+state buckets alias many different traffic configurations, so replaying that single sample
+misrepresents the real distribution, and each planning step injects the error again. With
+`model_capacity = 1` and 20 planning steps the agent ends at **-12.8**, far worse than no
+planning at all. Keeping the 20 most recent transitions per pair and sampling among them
+recovers it to **38.3**.
+
+**Planning only pays when experience is the bottleneck.** At 20000 episodes with epsilon
+decaying over 12000, planning changes almost nothing: performance is gated by the
+exploration schedule, not by how fast Q converges. Re-asked in a sample-limited regime
+(1200 episodes, epsilon decayed over 300, five seeds), planning is worth a great deal, and
+the curve is an inverted U:
+
+| planning steps | 0 | 5 | 20 | 50 |
+| --- | --- | --- | --- | --- |
+| final return | 9.8 +/- 9.6 | **24.4 +/- 5.2** | 11.3 +/- 7.4 | 9.5 +/- 9.3 |
+
+Five planning steps give two and a half times the return of none, with the tightest
+interval of the four. Beyond that it decays back: with an approximate model, over-planning
+amplifies model error rather than extracting more signal. See
+`figures/sweep_dyna_q_planning_steps.png`.
+
+**The actor-critic needed reward scaling, entropy regularisation, and a learning rate
+scaled to match.** At raw rewards the softmax saturates within a few hundred steps at any
+learning rate, because a collision contributes -75 to the gradient. Scaling rewards by
+0.05 fixes that but shrinks the TD error twentyfold, and at the original `alpha_policy` the
+policy stopped moving entirely: entropy sat at exactly ln(5) = 1.609, the uniform maximum,
+for 5000 episodes while the critic learned correctly. Raising `alpha_policy` to 0.05
+restored learning. Entropy regularisation is what stops the policy going deterministic
+early, and its weight is a balance, not a floor: at `entropy_beta = 0.02` the policy is
+pinned near uniform, and at 0.2 for `alpha_policy` it collapses to a single action.
+
+**Dyna-Q+ is both better and far steadier than Dyna-Q.** 37.6 +/- 2.1 against
+34.5 +/- 7.0, on an environment that is stationary and therefore not what the exploration
+bonus was designed for. The bonus still helps because the *model* goes stale: as the policy
+shifts, pairs it stopped visiting keep old transitions, and the staleness term pulls the
+agent back to refresh them. Dyna-Q's wide interval comes from one seed finishing at 20.8
+while the rest land near 38.
+
+**A single seed is not evidence, and policy gradient is where that bites.** On seed 0 the
+linear actor-critic scored 29.0, matching the hidden-layer version. Across five seeds it
+averages **-24.6 +/- 41.9** with two outright collapses, against **18.5 +/- 25.8** for one
+32-unit tanh hidden layer. `hidden_units` is therefore 32 by default, with 0 kept as the
+ablation.
+
+Even settled, the actor-critic is bimodal: per-seed returns are
+`[44.7, 36.7, 38.3, -16.9, -10.1]`. Three seeds beat Q-Learning's average and two fail to
+arrive, which averages to a mediocre number that describes none of the five runs. Its
+interval is an order of magnitude wider than Q-Learning's, the expected contrast between
+policy gradient and tabular TD. Note also that it has the *lowest* training collision rate
+of any learner at 10.8%: a stochastic entropy-regularised policy never commits hard enough
+to crash often, and its two bad seeds fail by crawling rather than by crashing.
 
 ## Algorithms
 
@@ -144,11 +229,17 @@ strictly worse than crawling, so there is no incentive to end an episode early.
 | `sarsa` | on-policy TD control |
 | `expected_sarsa` | on-policy TD, expectation instead of a sample |
 | `monte_carlo` | first-visit MC control |
+| `dyna_q` | model-based planning over a learned transition model |
+| `dyna_q_plus` | Dyna-Q with an exploration bonus for stale state-action pairs |
+| `actor_critic` | one-step policy gradient with a learned value baseline |
 
 The three TD variants differ only in their bootstrap target and share one file.
 `scripted` is a hand-written rule-based driver reading the same discrete state as the
 learners; its job is to prove the observation is sufficient to drive safely, so a failure
 to learn is an agent problem rather than an unsolvable environment.
+
+`actor_critic` is the only agent that reads the continuous encoder, and the only one
+whose gradients are written out by hand rather than inherited from a Q-table update.
 
 Per-algorithm hyperparameters are in `configs/algos.json` and are applied automatically;
 explicit CLI flags still override them.
@@ -168,15 +259,19 @@ rl_drive/
     baselines.py      random / always-accelerate / scripted
     tabular.py        Q-Learning, SARSA, Expected SARSA
     monte_carlo.py
+    dyna_q.py         Dyna-Q and Dyna-Q+
+    actor_critic.py   policy gradient, explicit gradients
   training/
     rollout.py        one episode
     evaluator.py      greedy evaluation on held-out seeds
     trainer.py        the training loop
+    experiment.py     multi-seed runs and aggregation
     metrics.py        stats, CSV logging, checkpoints
   cli.py
-configs/              JSON presets
+configs/              JSON presets, including per-algorithm hyperparameters
+experiments/          comparison and sweep scripts, figure styling
 tests/
-runs/                 outputs (gitignored)
+runs/, figures/       outputs (gitignored)
 ```
 
 ## Reproducibility
@@ -188,7 +283,5 @@ evaluations of the same policy return identical numbers. Each run writes `config
 
 ## Roadmap
 
-- **Phase 3** — Dyna-Q / Dyna-Q+, Actor-Critic on the continuous encoder, multi-seed
-  experiment suite and report figures.
 - **Phase 4** — FastAPI backend and browser dashboard: live canvas, live charts, controls.
 - **Phase 5** — manual-drive human baseline, hyperparameter sweeps, learning-proof artifacts.
