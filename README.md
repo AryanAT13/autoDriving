@@ -5,9 +5,8 @@ signals. The simulation exists to serve the RL, not the other way round: it is f
 fully reproducible, and exposes the same world through two observation encodings so
 tabular and function-approximation agents stay directly comparable.
 
-**All five phases complete** — environment, baselines, seven learning algorithms spanning
-TD control, Monte Carlo, model-based planning and policy gradient, plus the training
-harness, CLI, multi-seed experiment suite, 123 tests, and a browser dashboard that trains
+Environment, baselines, seven learning algorithms spanning TD control, Monte Carlo, model-based planning and policy gradient, 
+plus the training harness, CLI, multi-seed experiment suite, 123 tests, and a browser dashboard that trains
 an agent live, animates it driving, tabulates what it learned, and lets you take the wheel
 yourself for comparison.
 
@@ -358,45 +357,6 @@ whose gradients are written out by hand rather than inherited from a Q-table upd
 
 Per-algorithm hyperparameters are in `configs/algos.json` and are applied automatically;
 explicit CLI flags still override them.
-
-## Layout
-
-```
-rl_drive/
-  config.py           dataclass defaults, JSON overrides
-  env/
-    world.py          road, traffic, signals
-    observations.py   discrete + continuous encoders
-    rewards.py        every reward term
-    driving_env.py    Gymnasium Env
-  agents/
-    base.py           Agent protocol, epsilon schedule, Q-table policy
-    baselines.py      random / always-accelerate / scripted
-    tabular.py        Q-Learning, SARSA, Expected SARSA
-    monte_carlo.py
-    dyna_q.py         Dyna-Q and Dyna-Q+
-    actor_critic.py   policy gradient, explicit gradients
-  training/
-    rollout.py        one episode
-    evaluator.py      greedy evaluation on held-out seeds
-    trainer.py        the training loop
-    experiment.py     multi-seed runs and aggregation
-    metrics.py        stats, CSV logging, checkpoints
-  server/
-    app.py            FastAPI routes, websocket stream, static mount
-    runs.py           background training runs, aggregation, manual-drive sessions
-  policy_view.py      the readable policy slice, shared by the CLI and the dashboard
-  cli.py
-web/
-  index.html          layout
-  styles.css          dark theme
-  renderer.js         canvas: road, vehicles, signals, HUD
-  app.js              controls, websocket, charts, playback, manual driving
-configs/              JSON presets, including per-algorithm hyperparameters
-experiments/          comparison and sweep scripts, figure styling
-tests/
-runs/, figures/       outputs (gitignored)
-```
 
 ## Reproducibility
 
