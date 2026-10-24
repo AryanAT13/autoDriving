@@ -286,10 +286,27 @@ const RENDER = (() => {
     hud(ctx, w, h, frame, label);
   }
 
+  /* Blend two consecutive simulation steps so motion is smooth at low playback rates
+     and a lane change slides instead of snapping. */
+  function interpolate(a, b, t) {
+    if (!b || t <= 0) return a;
+    const lerp = (from, to) => from + (to - from) * t;
+    const SNAP = 60;  // a recycled vehicle teleports; do not slide it across the screen
+    return {
+      ...a,
+      ego: { ...a.ego, x: lerp(a.ego.x, b.ego.x), lane: lerp(a.ego.lane, b.ego.lane) },
+      traffic: a.traffic.map((car, index) => {
+        const next = b.traffic[index];
+        if (!next || next.lane !== car.lane || Math.abs(next.x - car.x) > SNAP) return car;
+        return { ...car, x: lerp(car.x, next.x) };
+      }),
+    };
+  }
+
   function clear(canvas) {
     const { ctx, w, h } = fit(canvas);
     backdrop(ctx, w, h);
   }
 
-  return { draw, clear };
+  return { draw, clear, interpolate };
 })();

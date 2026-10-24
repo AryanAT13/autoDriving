@@ -246,7 +246,8 @@
   const overlay = (show) => { $("stageOverlay").hidden = !show; };
 
   function stopPlayback() {
-    clearInterval(state.player);
+    cancelAnimationFrame(state.player);
+    clearInterval(state.player);        // manual driving ticks on a timer instead
     state.player = null;
   }
 
@@ -275,24 +276,38 @@
     $("episodeInfo").textContent = note ?? "";
   }
 
+  /* Driven by requestAnimationFrame rather than one draw per simulation step, so the
+     slider sets how many steps pass per second while motion stays smooth between them. */
   function play(frames, stats, label) {
     stopPlayback();
     overlay(false);
     let index = 0;
-    const tick = () => {
-      const last = index === frames.length - 1;
-      RENDER.draw($("road"), frames[index], frames[index - 1], label,
-                  last ? outcomeOf(stats) : null);
-      state.lastDraw = { frame: frames[index], previous: frames[index - 1], label,
-                         outcome: last ? outcomeOf(stats) : null };
-      index += 1;
-      if (index >= frames.length) {
+    let carry = 0;
+    let last = performance.now();
+
+    const tick = (now) => {
+      const stepsPerSecond = Number($("speed").value);
+      carry += ((now - last) / 1000) * stepsPerSecond;
+      last = now;
+      while (carry >= 1 && index < frames.length - 1) {
+        carry -= 1;
+        index += 1;
+      }
+      const finished = index >= frames.length - 1;
+      const blend = finished ? 0 : carry;
+      const outcome = finished ? outcomeOf(stats) : null;
+      const frame = RENDER.interpolate(frames[index], frames[index + 1], blend);
+      RENDER.draw($("road"), frame, frames[index - 1], label, outcome);
+      state.lastDraw = { frame, previous: frames[index - 1], label, outcome };
+
+      if (finished) {
         stopPlayback();
         renderStats(stats, `${label} ${describe(stats)} after ${stats.steps} steps.`);
+        return;
       }
+      state.player = requestAnimationFrame(tick);
     };
-    tick();
-    state.player = setInterval(tick, 1000 / Number($("speed").value));
+    state.player = requestAnimationFrame(tick);
   }
 
   async function watch(url, label) {
